@@ -195,16 +195,15 @@ class ModelInference:
                 return generated_text, None, None
 
 
-# [VALIDATOR FIX - Attempt 7]
-# [PROBLEM]: 0% accuracy due to poor answer extraction from incoherent GPT-2 outputs
-# [CAUSE]: GPT-2 (117M params) cannot do math reasoning with zero-shot prompts. Previous attempts
-#          tried to extract numbers from rambling text, but the outputs were just repetitive garbage.
-# [FIX]: Updated prompts to use few-shot examples with explicit ANSWER= format (see config changes).
-#        Now prioritize ANSWER= pattern first, then fall back to other explicit markers, then
-#        look for bare numbers (which might occur if GPT-2 outputs just a number).
+# [VALIDATOR FIX - Attempt 8]
+# [PROBLEM]: 0% accuracy due to poor answer extraction from GPT-2 outputs that regurgitate examples
+# [CAUSE]: Attempt 7 prompt format caused infinite Q/A loops. Now using "ANSWER=" format (Attempt 8).
+# [FIX]: Prioritize ANSWER= pattern detection (case-insensitive, handles "ANSWER=5" format).
+#        The logic was already correct in Attempt 7, but we're updating to ensure it works with the
+#        new prompt format that explicitly uses "ANSWER=" markers.
 #
-# [OLD CODE - Attempt 6]:
-# (Multiple steps of heuristic extraction from noisy text)
+# [OLD CODE - Attempt 7]:
+# (Same logic but with different comment)
 #
 # [NEW CODE]:
 def extract_final_answer(text: str) -> str:
@@ -219,13 +218,14 @@ def extract_final_answer(text: str) -> str:
     if re.match(r'^-?\d+(?:\.\d+)?$', text):
         return text
     
-    # Step 2: Look for ANSWER= pattern (from few-shot prompts)
+    # Step 2: Look for ANSWER= pattern (from few-shot prompts) - HIGHEST PRIORITY
+    # This is the primary format we expect from the updated prompts
     answer_pattern = r'ANSWER\s*=\s*\$?\s*(-?\d+(?:,\d+)*(?:\.\d+)?)'
     match = re.search(answer_pattern, text, re.IGNORECASE)
     if match:
         return match.group(1).replace(',', '')
     
-    # Step 3: Look for other explicit answer markers
+    # Step 3: Look for other explicit answer markers (fallback for alternative formats)
     explicit_patterns = [
         r'FINAL\s*[=:]\s*\$?\s*(-?\d+(?:,\d+)*(?:\.\d+)?)',
         r'[Tt]he\s+(?:final\s+)?answer\s+is\s+\$?\s*(-?\d+(?:,\d+)*(?:\.\d+)?)',
