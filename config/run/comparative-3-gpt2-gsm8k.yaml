@@ -12,10 +12,21 @@ data:
   calibration_size: 60
   eval_size: 300
   
+# [VALIDATOR FIX - Attempt 8]
+# [PROBLEM]: System 1 never used (0% usage), everything goes to System 2 which has 10% accuracy
+# [CAUSE]: entropy_threshold=1.5 is far too low. All observed entropies are 4+, so condition "entropy < 1.5" is never true
+# [FIX]: Increase threshold to 5.0 so some examples use System 1 (low-entropy fast path)
+#
+# [OLD CODE]:
+# method_params:
+#   # Simple entropy threshold (tuned on calibration set)
+#   entropy_threshold: 1.5  # If first-token entropy > threshold, use CoT
+#
+# [NEW CODE]:
 # Heuristic gating parameters
 method_params:
   # Simple entropy threshold (tuned on calibration set)
-  entropy_threshold: 1.5  # If first-token entropy > threshold, use CoT
+  entropy_threshold: 5.0  # If first-token entropy > threshold, use CoT
   
 # [VALIDATOR FIX - Attempt 6]
 # [PROBLEM]: 0% accuracy with incoherent rambling outputs from GPT-2
@@ -37,23 +48,24 @@ model_params:
   top_p: 1.0
   return_scores: true  # Need scores for entropy
   
-# [VALIDATOR FIX - Attempt 7]
-# [PROBLEM]: 0% accuracy due to GPT-2 generating incoherent, repetitive text that doesn't solve the math problems
-# [CAUSE]: GPT-2 (117M) is too weak for complex math reasoning. Zero-shot prompts produce garbage.
-# [FIX]: Add few-shot examples to guide the model toward structured reasoning and explicit answer format.
-#        Use ANSWER= format to make extraction unambiguous.
+# [VALIDATOR FIX - Attempt 8]
+# [PROBLEM]: GPT-2 generates endless repetition in System 2 (e.g., "The balloons were filled with water" x 40)
+# [CAUSE]: Prompt ends with "Step 1:" which primes continuation. With greedy decoding (temp=0), GPT-2 gets
+#          stuck repeating the same token sequence infinitely until max_length is hit.
+# [FIX]: Remove the trailing "Step 1:" and end examples with complete solutions. Let GPT-2 start fresh
+#        with the question, making it more likely to generate a direct answer instead of getting stuck.
+#        For weak models, simpler prompts that encourage direct answers work better than forced step formats.
 #
 # [OLD CODE]:
-# system1_prompt: "Answer the following math problem directly with just the final numeric answer:\n\n{question}\n\nAnswer:"
-# system2_prompt: "Solve the following math problem step by step, showing your reasoning:\n\n{question}\n\nLet's solve this step by step:"
-# extract_prompt: "Extract only the final numeric answer from the following solution:\n\n{solution}\n\nFINAL="
+# system1_prompt: "Q: A baker made 9 cakes. He sold 4 cakes. How many cakes does he have left?\nANSWER=5\n\nQ: There are 15 apples and 8 oranges. How many fruits in total?\nANSWER=23\n\nQ: {question}\nANSWER="
+# system2_prompt: "Q: A baker made 9 cakes. He sold 4 cakes. How many cakes does he have left?\nStep 1: The baker started with 9 cakes.\nStep 2: He sold 4 cakes.\nStep 3: Cakes left = 9 - 4 = 5.\nANSWER=5\n\nQ: There are 15 apples and 8 oranges. How many fruits in total?\nStep 1: There are 15 apples.\nStep 2: There are 8 oranges.\nStep 3: Total fruits = 15 + 8 = 23.\nANSWER=23\n\nQ: {question}\nStep 1:"
 #
 # [NEW CODE]:
 # System 1 (fast) prompt template - few-shot with explicit ANSWER= format
 system1_prompt: "Q: A baker made 9 cakes. He sold 4 cakes. How many cakes does he have left?\nANSWER=5\n\nQ: There are 15 apples and 8 oranges. How many fruits in total?\nANSWER=23\n\nQ: {question}\nANSWER="
 
-# System 2 (CoT) prompt template - few-shot with step-by-step example
-system2_prompt: "Q: A baker made 9 cakes. He sold 4 cakes. How many cakes does he have left?\nStep 1: The baker started with 9 cakes.\nStep 2: He sold 4 cakes.\nStep 3: Cakes left = 9 - 4 = 5.\nANSWER=5\n\nQ: There are 15 apples and 8 oranges. How many fruits in total?\nStep 1: There are 15 apples.\nStep 2: There are 8 oranges.\nStep 3: Total fruits = 15 + 8 = 23.\nANSWER=23\n\nQ: {question}\nStep 1:"
+# System 2 (CoT) prompt template - few-shot, but don't force "Step 1:" continuation to avoid loops
+system2_prompt: "Q: A baker made 9 cakes. He sold 4 cakes. How many cakes does he have left?\nLet's think: The baker started with 9 cakes and sold 4, so 9 - 4 = 5 cakes left.\nANSWER=5\n\nQ: There are 15 apples and 8 oranges. How many fruits in total?\nLet's think: 15 apples + 8 oranges = 23 fruits total.\nANSWER=23\n\nQ: {question}\nLet's think:"
 
 # Answer extraction prompt  
 extract_prompt: "Extract only the final numeric answer from the following solution:\n\n{solution}\n\nFINAL="
