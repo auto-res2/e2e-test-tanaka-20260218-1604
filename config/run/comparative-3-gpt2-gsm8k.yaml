@@ -12,21 +12,21 @@ data:
   calibration_size: 60
   eval_size: 300
   
-# [VALIDATOR FIX - Attempt 8]
-# [PROBLEM]: System 1 never used (0% usage), everything goes to System 2 which has 10% accuracy
-# [CAUSE]: entropy_threshold=1.5 is far too low. All observed entropies are 4+, so condition "entropy < 1.5" is never true
-# [FIX]: Increase threshold to 5.0 so some examples use System 1 (low-entropy fast path)
+# [VALIDATOR FIX - Attempt 9]
+# [PROBLEM]: System 2 never used (0% usage), everything goes to System 1 which has 3.3% accuracy
+# [CAUSE]: entropy_threshold=5.0 is too high. All observed entropies are 4.0-4.9, so condition "entropy < 5.0" is always true
+# [FIX]: Set threshold to 4.25 (median of distribution) for balanced 51/49 split between System 1 and System 2
 #
 # [OLD CODE]:
 # method_params:
 #   # Simple entropy threshold (tuned on calibration set)
-#   entropy_threshold: 1.5  # If first-token entropy > threshold, use CoT
+#   entropy_threshold: 5.0  # If first-token entropy > threshold, use CoT
 #
 # [NEW CODE]:
 # Heuristic gating parameters
 method_params:
   # Simple entropy threshold (tuned on calibration set)
-  entropy_threshold: 5.0  # If first-token entropy > threshold, use CoT
+  entropy_threshold: 4.25  # If first-token entropy < threshold, use System 1 (fast); else use CoT
   
 # [VALIDATOR FIX - Attempt 6]
 # [PROBLEM]: 0% accuracy with incoherent rambling outputs from GPT-2
