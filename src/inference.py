@@ -1,6 +1,18 @@
 """
 Inference script for RC-CoT experiments.
 Implements all methods: rc-cot, always-fast, always-cot, entropy-gate.
+
+[VALIDATOR FIX - Attempt 4]
+[PROBLEM]: All 10 samples got 0% accuracy with System 2 (CoT) generating only "\n"
+[CAUSE]: Previous Attempt 3 added newline as a global stopping criterion, but this stopped
+         CoT generation immediately after the first newline. System 2 needs multi-line output
+         for step-by-step reasoning, but was being forced to stop after one token.
+[FIX]: Added allow_multiline parameter to generate_with_scores(). When False (default),
+       stops at newline for direct answers and extraction. When True, allows multi-line
+       output for CoT generation. Updated all 12 call sites appropriately:
+       - System 1 (direct answers): allow_multiline=False
+       - System 2 (CoT reasoning): allow_multiline=True  
+       - Extract prompts: allow_multiline=False
 """
 
 import argparse
@@ -54,10 +66,16 @@ class ModelInference:
     def generate_with_scores(
         self,
         prompt: str,
-        return_scores: bool = False
+        return_scores: bool = False,
+        allow_multiline: bool = False
     ) -> Tuple[str, Optional[np.ndarray], Optional[List[float]]]:
         """
         Generate text with optional score extraction.
+        
+        Args:
+            prompt: Input prompt
+            return_scores: Whether to return logits and logprobs
+            allow_multiline: If False, stop at first newline. If True, allow multi-line output.
         
         Returns:
             generated_text: Generated text (without prompt)
@@ -90,24 +108,41 @@ class ModelInference:
             do_sample = self.model_params.get('do_sample', True)
             temp = self.model_params.get('temperature', 0.7)
             
-            # [VALIDATOR FIX - Attempt 3]
-            # [PROBLEM]: Model generates continuation text after the answer (e.g., " 1\n\nQ: Jolene...")
-            # [CAUSE]: No stopping criteria - model continues generating up to max_new_tokens
-            # [FIX]: Add newline token as stopping criterion to stop after first line
+            # [VALIDATOR FIX - Attempt 4]
+            # [PROBLEM]: System 2 (CoT) generates only "\n" because newline stopping is too aggressive
+            # [CAUSE]: Attempt 3 added newline as stopping criterion globally, but CoT needs multi-line output
+            # [FIX]: Only apply newline stopping when allow_multiline=False (for direct answers and extraction)
             #
             # [OLD CODE]:
+            # # [VALIDATOR FIX - Attempt 3]
+            # # [PROBLEM]: Model generates continuation text after the answer (e.g., " 1\n\nQ: Jolene...")
+            # # [CAUSE]: No stopping criteria - model continues generating up to max_new_tokens
+            # # [FIX]: Add newline token as stopping criterion to stop after first line
+            # #
+            # # [OLD CODE]:
+            # # gen_kwargs = {
+            # #     'max_new_tokens': self.model_params.get('max_length', 512),
+            # # }
+            # #
+            # # [NEW CODE]:
+            # # Handle greedy decoding when temperature is 0 or do_sample is False
+            # # Add newline as stopping criterion to prevent continuation
+            # newline_token_id = self.tokenizer.encode('\n', add_special_tokens=False)[0]
             # gen_kwargs = {
             #     'max_new_tokens': self.model_params.get('max_length', 512),
+            #     'eos_token_id': [self.tokenizer.eos_token_id, newline_token_id],
             # }
             #
             # [NEW CODE]:
-            # Handle greedy decoding when temperature is 0 or do_sample is False
-            # Add newline as stopping criterion to prevent continuation
-            newline_token_id = self.tokenizer.encode('\n', add_special_tokens=False)[0]
             gen_kwargs = {
                 'max_new_tokens': self.model_params.get('max_length', 512),
-                'eos_token_id': [self.tokenizer.eos_token_id, newline_token_id],
             }
+            
+            # Only add newline stopping for single-line outputs (direct answers, final extractions)
+            # CoT generation needs to produce multi-line reasoning, so don't stop on newlines
+            if not allow_multiline:
+                newline_token_id = self.tokenizer.encode('\n', add_special_tokens=False)[0]
+                gen_kwargs['eos_token_id'] = [self.tokenizer.eos_token_id, newline_token_id]
             
             if do_sample and temp > 0:
                 gen_kwargs['do_sample'] = True
@@ -249,7 +284,7 @@ class RC_CoT_Inference:
             # Generate System 1 answer
             prompt = self.cfg.run.system1_prompt.format(question=example['question'])
             generated, logits, logprobs = self.model_inference.generate_with_scores(
-                prompt, return_scores=True
+                prompt, return_scores=True, allow_multiline=False
             )
             
             # Extract features
@@ -285,7 +320,7 @@ class RC_CoT_Inference:
             # Generate System 1 answer
             prompt = self.cfg.run.system1_prompt.format(question=example['question'])
             generated, logits, logprobs = self.model_inference.generate_with_scores(
-                prompt, return_scores=True
+                prompt, return_scores=True, allow_multiline=False
             )
             
             # Extract features
@@ -403,7 +438,7 @@ class RC_CoT_Inference:
         if self.method == "always-fast":
             # Always use System 1
             prompt = self.cfg.run.system1_prompt.format(question=question)
-            generated, _, _ = self.model_inference.generate_with_scores(prompt, return_scores=False)
+            generated, _, _ = self.model_inference.generate_with_scores(prompt, return_scores=False, allow_multiline=False)
             predicted_answer = extract_final_answer(generated)
             is_correct = check_answer_correctness(predicted_answer, ground_truth)
             
@@ -419,11 +454,11 @@ class RC_CoT_Inference:
         elif self.method == "always-cot":
             # Always use System 2
             prompt = self.cfg.run.system2_prompt.format(question=question)
-            cot_solution, _, _ = self.model_inference.generate_with_scores(prompt, return_scores=False)
+            cot_solution, _, _ = self.model_inference.generate_with_scores(prompt, return_scores=False, allow_multiline=True)
             
             # Extract final answer
             extract_prompt = self.cfg.run.extract_prompt.format(solution=cot_solution)
-            answer_text, _, _ = self.model_inference.generate_with_scores(extract_prompt, return_scores=False)
+            answer_text, _, _ = self.model_inference.generate_with_scores(extract_prompt, return_scores=False, allow_multiline=False)
             predicted_answer = extract_final_answer(answer_text)
             is_correct = check_answer_correctness(predicted_answer, ground_truth)
             
@@ -440,7 +475,7 @@ class RC_CoT_Inference:
         elif self.method == "entropy-gate":
             # Use entropy-based heuristic
             prompt = self.cfg.run.system1_prompt.format(question=question)
-            generated, logits, logprobs = self.model_inference.generate_with_scores(prompt, return_scores=True)
+            generated, logits, logprobs = self.model_inference.generate_with_scores(prompt, return_scores=True, allow_multiline=False)
             
             # Compute entropy
             if logits is not None and logprobs is not None:
@@ -466,10 +501,10 @@ class RC_CoT_Inference:
             else:
                 # High entropy: use System 2
                 prompt2 = self.cfg.run.system2_prompt.format(question=question)
-                cot_solution, _, _ = self.model_inference.generate_with_scores(prompt2, return_scores=False)
+                cot_solution, _, _ = self.model_inference.generate_with_scores(prompt2, return_scores=False, allow_multiline=True)
                 
                 extract_prompt = self.cfg.run.extract_prompt.format(solution=cot_solution)
-                answer_text, _, _ = self.model_inference.generate_with_scores(extract_prompt, return_scores=False)
+                answer_text, _, _ = self.model_inference.generate_with_scores(extract_prompt, return_scores=False, allow_multiline=False)
                 predicted_answer = extract_final_answer(answer_text)
                 is_correct = check_answer_correctness(predicted_answer, ground_truth)
                 
@@ -487,7 +522,7 @@ class RC_CoT_Inference:
         elif self.method == "rc-cot":
             # RC-CoT method with risk control and shift detection
             prompt = self.cfg.run.system1_prompt.format(question=question)
-            generated, logits, logprobs = self.model_inference.generate_with_scores(prompt, return_scores=True)
+            generated, logits, logprobs = self.model_inference.generate_with_scores(prompt, return_scores=True, allow_multiline=False)
             
             # Extract features
             if logits is not None and logprobs is not None:
@@ -527,10 +562,10 @@ class RC_CoT_Inference:
             else:
                 # Use System 2 (deliberation path)
                 prompt2 = self.cfg.run.system2_prompt.format(question=question)
-                cot_solution, _, _ = self.model_inference.generate_with_scores(prompt2, return_scores=False)
+                cot_solution, _, _ = self.model_inference.generate_with_scores(prompt2, return_scores=False, allow_multiline=True)
                 
                 extract_prompt = self.cfg.run.extract_prompt.format(solution=cot_solution)
-                answer_text, _, _ = self.model_inference.generate_with_scores(extract_prompt, return_scores=False)
+                answer_text, _, _ = self.model_inference.generate_with_scores(extract_prompt, return_scores=False, allow_multiline=False)
                 predicted_answer = extract_final_answer(answer_text)
                 is_correct = check_answer_correctness(predicted_answer, ground_truth)
                 
