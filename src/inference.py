@@ -195,40 +195,16 @@ class ModelInference:
                 return generated_text, None, None
 
 
-# [VALIDATOR FIX - Attempt 6]
+# [VALIDATOR FIX - Attempt 7]
 # [PROBLEM]: 0% accuracy due to poor answer extraction from incoherent GPT-2 outputs
-# [CAUSE]: GPT-2 (117M params) cannot do math reasoning - it generates rambling text. The extractor
-#          picks random numbers from this noise (e.g., "40000" from repeated "$40,000", or entire
-#          paragraphs when no clear number is found at the end).
-# [FIX]: Make extraction more robust by:
-#        1. Look for explicit answer markers first (FINAL=, Answer:, etc.)
-#        2. For implicit extraction, look for numbers near common answer indicators
-#        3. Filter out numbers that are clearly part of the original question
-#        4. Prefer numbers that appear in certain answer contexts (total, result, etc.)
-#        5. If multiple numbers at end, pick the one closest to end of text
-#        6. Return "0" as fallback instead of entire text (more reasonable for math problems)
+# [CAUSE]: GPT-2 (117M params) cannot do math reasoning with zero-shot prompts. Previous attempts
+#          tried to extract numbers from rambling text, but the outputs were just repetitive garbage.
+# [FIX]: Updated prompts to use few-shot examples with explicit ANSWER= format (see config changes).
+#        Now prioritize ANSWER= pattern first, then fall back to other explicit markers, then
+#        look for bare numbers (which might occur if GPT-2 outputs just a number).
 #
-# [OLD CODE]:
-# def extract_final_answer(text: str) -> str:
-#     """Extract numeric answer from generated text."""
-#     # Look for patterns like "Answer: 42" or "FINAL=42"
-#     patterns = [
-#         r'FINAL\s*[=:]\s*(-?\d+(?:,\d+)*(?:\.\d+)?)',
-#         r'[Aa]nswer\s*[=:]\s*(-?\d+(?:,\d+)*(?:\.\d+)?)',
-#         r'\$?\s*(-?\d+(?:,\d+)*(?:\.\d+)?)\s*$',  # Number at end
-#     ]
-#     
-#     for pattern in patterns:
-#         match = re.search(pattern, text)
-#         if match:
-#             return match.group(1).replace(',', '')
-#     
-#     # Fallback: extract last number in text
-#     numbers = re.findall(r'-?\d+(?:,\d+)*(?:\.\d+)?', text)
-#     if numbers:
-#         return numbers[-1].replace(',', '')
-#     
-#     return text.strip()
+# [OLD CODE - Attempt 6]:
+# (Multiple steps of heuristic extraction from noisy text)
 #
 # [NEW CODE]:
 def extract_final_answer(text: str) -> str:
@@ -236,7 +212,20 @@ def extract_final_answer(text: str) -> str:
     if not text or len(text.strip()) == 0:
         return "0"
     
-    # Step 1: Look for explicit answer markers (highest confidence)
+    text = text.strip()
+    
+    # Step 1: Check if the entire output is just a number (common for System 1 with good prompting)
+    # This handles cases like "288" or "42" as the complete response
+    if re.match(r'^-?\d+(?:\.\d+)?$', text):
+        return text
+    
+    # Step 2: Look for ANSWER= pattern (from few-shot prompts)
+    answer_pattern = r'ANSWER\s*=\s*\$?\s*(-?\d+(?:,\d+)*(?:\.\d+)?)'
+    match = re.search(answer_pattern, text, re.IGNORECASE)
+    if match:
+        return match.group(1).replace(',', '')
+    
+    # Step 3: Look for other explicit answer markers
     explicit_patterns = [
         r'FINAL\s*[=:]\s*\$?\s*(-?\d+(?:,\d+)*(?:\.\d+)?)',
         r'[Tt]he\s+(?:final\s+)?answer\s+is\s+\$?\s*(-?\d+(?:,\d+)*(?:\.\d+)?)',
@@ -250,7 +239,7 @@ def extract_final_answer(text: str) -> str:
         if match:
             return match.group(1).replace(',', '')
     
-    # Step 2: Look for numbers in the last 50 characters (likely to be the answer)
+    # Step 4: Look for numbers in the last 50 characters (likely to be the answer)
     last_portion = text[-50:].strip()
     
     # Extract all numbers with optional $ prefix from last portion
@@ -262,7 +251,7 @@ def extract_final_answer(text: str) -> str:
         if cleaned and cleaned not in ['0.0']:
             return cleaned
     
-    # Step 3: Extract all numbers from entire text and return last one
+    # Step 5: Extract all numbers from entire text and return last one
     all_numbers = re.findall(r'[$]?\s*(-?\d+(?:,\d+)*(?:\.\d+)?)', text)
     if all_numbers:
         # Filter out very large numbers that are likely noise (e.g., "40000" when answer is "40")
@@ -277,7 +266,7 @@ def extract_final_answer(text: str) -> str:
             except ValueError:
                 continue
     
-    # Step 4: Fallback to "0" if no valid number found (better than returning garbage text)
+    # Step 6: Fallback to "0" if no valid number found (better than returning garbage text)
     return "0"
 
 
