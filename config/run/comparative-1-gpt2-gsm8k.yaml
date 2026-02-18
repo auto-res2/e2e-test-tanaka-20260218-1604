@@ -34,14 +34,17 @@ model_params:
   do_sample: false
   return_scores: false
   
-# [VALIDATOR FIX - Attempt 3]
-# [PROBLEM]: GPT-2 still continues the pattern after the answer, generating "Q:" and more text
-# [CAUSE]: Ending with "A:" triggers GPT-2's pattern completion - it wants to generate an answer then continue with "Q:"
-# [FIX]: Use a completion-style prompt without "A:" that asks for just the number, making GPT-2 complete the sentence
+# [VALIDATOR FIX - Attempt 8]
+# [PROBLEM]: 0.67% accuracy due to inconsistent prompt format vs other methods
+# [CAUSE]: comparative-1 uses weak prompt with 1 inline example while comparative-3 and proposed use
+#          proper 2-shot examples with ANSWER= format. This creates unfair comparison - the baseline
+#          appears artificially worse due to inferior prompts, not the method itself.
+# [FIX]: Use same System 1 prompt as comparative-3 and proposed method for fair experimental comparison.
+#        All methods should differ only in their gating/triggering logic, not prompt quality.
 #
 # [OLD CODE]:
-# system1_prompt: "Q: Janet has 3 apples and buys 2 more. How many does she have?\nA: 5\n\nQ: A store has 20 items and sells 8. How many are left?\nA: 12\n\nQ: {question}\nA:"
+# system1_prompt: "Answer with just the final number.\n\nExample: Janet has 3 apples and buys 2 more. How many does she have? Answer: 5\n\n{question} Answer:"
 #
 # [NEW CODE]:
-# System 1 (fast) prompt template - completion style to get just the numeric answer
-system1_prompt: "Answer with just the final number.\n\nExample: Janet has 3 apples and buys 2 more. How many does she have? Answer: 5\n\n{question} Answer:"
+# System 1 (fast) prompt template - same few-shot format as other methods for fair comparison
+system1_prompt: "Q: A baker made 9 cakes. He sold 4 cakes. How many cakes does he have left?\nANSWER=5\n\nQ: There are 15 apples and 8 oranges. How many fruits in total?\nANSWER=23\n\nQ: {question}\nANSWER="
