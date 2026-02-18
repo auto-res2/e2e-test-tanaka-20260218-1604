@@ -29,15 +29,36 @@ data:
 #   return_scores: false
 #
 # [NEW CODE]:
+# [VALIDATOR FIX - Attempt 7]
+# Reduce max_length from 512 to 100 to encourage concise answers like the examples.
+# The 2-shot examples show answers of ~15-20 tokens, so 100 is plenty.
 model_params:
-  max_length: 512
+  max_length: 100
   do_sample: false
   temperature: 0
   top_p: 1.0
   return_scores: false
 
-# System 2 (CoT) prompt template
-system2_prompt: "Solve the following math problem step by step, showing your reasoning:\n\n{question}\n\nLet's solve this step by step:"
+# [VALIDATOR FIX - Attempt 7]
+# [PROBLEM]: 0% accuracy - GPT-2 generates repetitive rambling instead of solutions
+# [CAUSE]: GPT-2 (117M params) cannot do math reasoning zero-shot. The verbose instruction-style
+#          prompt triggers rambling. GSM8K requires actual arithmetic and multi-step reasoning
+#          which is beyond GPT-2's capabilities without examples.
+# [FIX]: Add 2-shot examples with very simple problems to give GPT-2 a pattern to follow.
+#        Use completion format that's more natural for GPT-2. This won't make GPT-2 good at math,
+#        but might help it stumble onto correct answers for the simplest problems through pattern
+#        matching rather than reasoning.
+#
+# [OLD CODE]:
+# # System 2 (CoT) prompt template
+# system2_prompt: "Solve the following math problem step by step, showing your reasoning:\n\n{question}\n\nLet's solve this step by step:"
+# 
+# # Answer extraction prompt
+# extract_prompt: "Extract only the final numeric answer from the following solution:\n\n{solution}\n\nFINAL="
+#
+# [NEW CODE]:
+# System 2 (CoT) prompt template - simplified with few-shot examples for GPT-2
+system2_prompt: "Q: Janet has 3 apples and buys 2 more. How many apples does she have?\nA: Janet starts with 3 apples. She buys 2 more apples. 3 + 2 = 5. The answer is 5.\n\nQ: A store has 20 items and sells 8. How many are left?\nA: The store starts with 20 items. They sell 8 items. 20 - 8 = 12. The answer is 12.\n\nQ: {question}\nA:"
 
-# Answer extraction prompt
+# Answer extraction prompt (kept for config compatibility, but not used per Attempt 5)
 extract_prompt: "Extract only the final numeric answer from the following solution:\n\n{solution}\n\nFINAL="
