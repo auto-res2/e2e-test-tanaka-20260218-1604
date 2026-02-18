@@ -12,11 +12,28 @@ data:
   calibration_size: 60
   eval_size: 300
   
-# Model inference parameters
+# [VALIDATOR FIX - Attempt 6]
+# [PROBLEM]: 0% accuracy with incoherent rambling outputs from GPT-2
+# [CAUSE]: temperature=0.7 + top_p=0.95 causes random sampling, which makes GPT-2's already poor
+#          math ability even worse - it generates completely nonsensical rambling instead of
+#          attempting to follow the pattern. While GPT-2 still can't solve GSM8K math problems,
+#          greedy decoding should at least make outputs more coherent and consistent.
+# [FIX]: Change to greedy decoding (do_sample=false, temperature=0) to get deterministic,
+#        more coherent outputs. This won't make GPT-2 good at math, but will reduce randomness.
+#
+# [OLD CODE]:
+# model_params:
+#   max_length: 512
+#   temperature: 0.7
+#   top_p: 0.95
+#   return_scores: false
+#
+# [NEW CODE]:
 model_params:
   max_length: 512
-  temperature: 0.7
-  top_p: 0.95
+  do_sample: false
+  temperature: 0
+  top_p: 1.0
   return_scores: false
 
 # System 2 (CoT) prompt template

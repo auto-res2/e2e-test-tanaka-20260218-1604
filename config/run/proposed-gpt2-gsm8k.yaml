@@ -32,11 +32,24 @@ method_params:
     enabled: true
     alpha_shift: 0.10  # Conformal threshold for OOD detection
     
-# Model inference parameters
+# [VALIDATOR FIX - Attempt 6]
+# [PROBLEM]: 0% accuracy with incoherent rambling outputs from GPT-2
+# [CAUSE]: temperature=0.7 + top_p=0.95 causes random sampling, making outputs incoherent
+# [FIX]: Use greedy decoding (do_sample=false, temperature=0) for deterministic, coherent outputs
+#
+# [OLD CODE]:
+# model_params:
+#   max_length: 512
+#   temperature: 0.7
+#   top_p: 0.95
+#   return_scores: true  # Required for extracting confidence features
+#
+# [NEW CODE]:
 model_params:
   max_length: 512
-  temperature: 0.7
-  top_p: 0.95
+  do_sample: false
+  temperature: 0
+  top_p: 1.0
   return_scores: true  # Required for extracting confidence features
   
 # System 1 (fast) prompt template
