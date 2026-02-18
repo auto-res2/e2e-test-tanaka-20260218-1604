@@ -12,10 +12,10 @@ data:
   calibration_size: 60
   eval_size: 300
   
-# [VALIDATOR FIX - Attempt 2]
-# [PROBLEM]: GPT-2 continues the few-shot pattern instead of answering (generates "Q:" after answer)
-# [CAUSE]: max_length=30 is too long; GPT-2 treats the prompt as a pattern to continue
-# [FIX]: Reduce max_length to 10 tokens (enough for numeric answers but too short to continue pattern)
+# [VALIDATOR FIX - Attempt 3]
+# [PROBLEM]: Model generates continuation after answer; need stopping at newline
+# [CAUSE]: Previous fix reduced tokens too much; need reasonable limit + stopping criterion
+# [FIX]: Set max_length to 20 tokens (enough for answers with explanatory text) but rely on newline stopping
 #
 # [OLD CODE]:
 # model_params:
@@ -26,22 +26,22 @@ data:
 #   return_scores: false
 #
 # [NEW CODE]:
-# Model inference parameters - short generation for numeric answers only
+# Model inference parameters - stop at newline to prevent pattern continuation
 model_params:
-  max_length: 10
+  max_length: 20
   temperature: 0.0
   top_p: 1.0
   do_sample: false
   return_scores: false
   
-# [VALIDATOR FIX - Attempt 2]
-# [PROBLEM]: Few-shot prompt causes GPT-2 to continue the pattern (generates more Q&A pairs) instead of stopping
-# [CAUSE]: Multiple Q&A pairs make GPT-2 treat this as a text continuation task, not a single-answer task
-# [FIX]: Use a single-shot prompt that ends more definitively, making it clear we want just ONE answer
+# [VALIDATOR FIX - Attempt 3]
+# [PROBLEM]: GPT-2 still continues the pattern after the answer, generating "Q:" and more text
+# [CAUSE]: Ending with "A:" triggers GPT-2's pattern completion - it wants to generate an answer then continue with "Q:"
+# [FIX]: Use a completion-style prompt without "A:" that asks for just the number, making GPT-2 complete the sentence
 #
 # [OLD CODE]:
-# system1_prompt: "Solve these math problems:\n\nQ: Janet has 3 apples and buys 2 more. How many does she have?\nA: 5\n\nQ: A store has 20 items and sells 8. How many are left?\nA: 12\n\nQ: {question}\nA:"
+# system1_prompt: "Q: Janet has 3 apples and buys 2 more. How many does she have?\nA: 5\n\nQ: A store has 20 items and sells 8. How many are left?\nA: 12\n\nQ: {question}\nA:"
 #
 # [NEW CODE]:
-# System 1 (fast) prompt template - single-shot to avoid continuation pattern
-system1_prompt: "Q: Janet has 3 apples and buys 2 more. How many does she have?\nA: 5\n\nQ: {question}\nA:"
+# System 1 (fast) prompt template - completion style to get just the numeric answer
+system1_prompt: "Answer with just the final number.\n\nExample: Janet has 3 apples and buys 2 more. How many does she have? Answer: 5\n\n{question} Answer:"

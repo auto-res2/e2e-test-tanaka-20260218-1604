@@ -90,9 +90,23 @@ class ModelInference:
             do_sample = self.model_params.get('do_sample', True)
             temp = self.model_params.get('temperature', 0.7)
             
+            # [VALIDATOR FIX - Attempt 3]
+            # [PROBLEM]: Model generates continuation text after the answer (e.g., " 1\n\nQ: Jolene...")
+            # [CAUSE]: No stopping criteria - model continues generating up to max_new_tokens
+            # [FIX]: Add newline token as stopping criterion to stop after first line
+            #
+            # [OLD CODE]:
+            # gen_kwargs = {
+            #     'max_new_tokens': self.model_params.get('max_length', 512),
+            # }
+            #
+            # [NEW CODE]:
             # Handle greedy decoding when temperature is 0 or do_sample is False
+            # Add newline as stopping criterion to prevent continuation
+            newline_token_id = self.tokenizer.encode('\n', add_special_tokens=False)[0]
             gen_kwargs = {
                 'max_new_tokens': self.model_params.get('max_length', 512),
+                'eos_token_id': [self.tokenizer.eos_token_id, newline_token_id],
             }
             
             if do_sample and temp > 0:
