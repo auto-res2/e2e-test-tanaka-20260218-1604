@@ -1,0 +1,34 @@
+# Baseline: Entropy-based heuristic gating (simple threshold)
+# Model: GPT-2, Dataset: GSM8K
+
+run_id: comparative-3-gpt2-gsm8k
+method: entropy-gate
+model: gpt2
+dataset: gsm8k
+
+# Dataset splits (same as proposed)
+data:
+  monitor_train_size: 60
+  calibration_size: 60
+  eval_size: 300
+  
+# Heuristic gating parameters
+method_params:
+  # Simple entropy threshold (tuned on calibration set)
+  entropy_threshold: 1.5  # If first-token entropy > threshold, use CoT
+  
+# Model inference parameters
+model_params:
+  max_length: 512
+  temperature: 0.7
+  top_p: 0.95
+  return_scores: true  # Need scores for entropy
+  
+# System 1 (fast) prompt template
+system1_prompt: "Answer the following math problem directly with just the final numeric answer:\n\n{question}\n\nAnswer:"
+
+# System 2 (CoT) prompt template
+system2_prompt: "Solve the following math problem step by step, showing your reasoning:\n\n{question}\n\nLet's solve this step by step:"
+
+# Answer extraction prompt
+extract_prompt: "Extract only the final numeric answer from the following solution:\n\n{solution}\n\nFINAL="

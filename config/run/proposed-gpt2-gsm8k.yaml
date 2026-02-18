@@ -1,0 +1,49 @@
+# Risk-Controlling Conformal Triggered CoT (RC-CoT) - Proposed Method
+# Model: GPT-2, Dataset: GSM8K
+
+run_id: proposed-gpt2-gsm8k
+method: rc-cot
+model: gpt2
+dataset: gsm8k
+
+# Dataset splits
+data:
+  monitor_train_size: 60  # For training correctness monitor
+  calibration_size: 60    # For risk-controlled threshold selection
+  eval_size: 300          # For final evaluation
+  
+# RC-CoT method parameters
+method_params:
+  # Risk control parameters
+  alpha: 0.10  # User-chosen risk tolerance (max 10% error on fast-path)
+  delta: 0.05  # Confidence level for finite-sample bound
+  
+  # Confidence features
+  features:
+    - first_token_entropy
+    - top1_top2_margin
+    - mean_log_prob
+  
+  # Monitor model type (logistic or isotonic regression)
+  monitor_type: logistic
+  
+  # Shift detection parameters
+  shift_detection:
+    enabled: true
+    alpha_shift: 0.10  # Conformal threshold for OOD detection
+    
+# Model inference parameters
+model_params:
+  max_length: 512
+  temperature: 0.7
+  top_p: 0.95
+  return_scores: true  # Required for extracting confidence features
+  
+# System 1 (fast) prompt template
+system1_prompt: "Answer the following math problem directly with just the final numeric answer:\n\n{question}\n\nAnswer:"
+
+# System 2 (CoT) prompt template
+system2_prompt: "Solve the following math problem step by step, showing your reasoning:\n\n{question}\n\nLet's solve this step by step:"
+
+# Answer extraction prompt (for System 2)
+extract_prompt: "Extract only the final numeric answer from the following solution:\n\n{solution}\n\nFINAL="

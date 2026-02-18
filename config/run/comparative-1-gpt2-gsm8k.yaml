@@ -1,0 +1,23 @@
+# Baseline: Always use System 1 (no CoT)
+# Model: GPT-2, Dataset: GSM8K
+
+run_id: comparative-1-gpt2-gsm8k
+method: always-fast
+model: gpt2
+dataset: gsm8k
+
+# Dataset splits (same as proposed)
+data:
+  monitor_train_size: 60
+  calibration_size: 60
+  eval_size: 300
+  
+# Model inference parameters
+model_params:
+  max_length: 512
+  temperature: 0.7
+  top_p: 0.95
+  return_scores: false
+  
+# System 1 (fast) prompt template
+system1_prompt: "Answer the following math problem directly with just the final numeric answer:\n\n{question}\n\nAnswer:"

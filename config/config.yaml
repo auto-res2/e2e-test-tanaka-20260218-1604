@@ -1,6 +1,4 @@
-# Main configuration for Hydra
-# This file will be populated by AI code generator based on experimental design
-
+# Main configuration for RC-CoT experiments
 defaults:
   - _self_
   - run: ???  # loads from config/run/, accessible as 'run=' in CLI
@@ -11,8 +9,21 @@ mode: main
 # Results output directory
 results_dir: .research/results
 
-# WandB configuration (will be set by AI agent)
+# WandB configuration
 wandb:
-  entity: ???
-  project: ???
+  entity: airas
+  project: 2026-02-18
   mode: online
+
+# Inference configuration
+inference:
+  cache_dir: .cache
+  seed: 42
+  num_samples: null  # null means use full dataset
+  
+# Run configuration (overridden by specific run configs)
+run:
+  run_id: ???
+  method: ???
+  model: ???
+  dataset: ???
