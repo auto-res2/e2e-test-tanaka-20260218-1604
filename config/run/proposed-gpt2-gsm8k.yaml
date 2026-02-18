@@ -52,11 +52,32 @@ model_params:
   top_p: 1.0
   return_scores: true  # Required for extracting confidence features
   
-# System 1 (fast) prompt template
-system1_prompt: "Answer the following math problem directly with just the final numeric answer:\n\n{question}\n\nAnswer:"
+# [VALIDATOR FIX - Attempt 1]
+# [PROBLEM]: 0% accuracy - GPT-2 generates repetitive nonsense instead of solving math problems
+# [CAUSE]: Zero-shot prompts don't work with small models like GPT-2 (117M params). The model was never
+#          trained to follow meta-instructions like "solve step by step" or "answer directly".
+#          Looking at results.json, System 2 outputs are endless repetition (e.g., "The thirteenth balloon
+#          is filled with water" repeated 40 times) - classic sign of mode collapse with greedy decoding.
+# [FIX]: Use few-shot prompts with explicit ANSWER= format (same as comparative-3). Small models need
+#        concrete examples to understand the task format. System 2 prompt avoids "Step 1:" continuation
+#        (which causes loops) and uses "Let's think:" to encourage reasoning without rigid structure.
+#
+# [OLD CODE]:
+# # System 1 (fast) prompt template
+# system1_prompt: "Answer the following math problem directly with just the final numeric answer:\n\n{question}\n\nAnswer:"
+# 
+# # System 2 (CoT) prompt template
+# system2_prompt: "Solve the following math problem step by step, showing your reasoning:\n\n{question}\n\nLet's solve this step by step:"
+# 
+# # Answer extraction prompt (for System 2)
+# extract_prompt: "Extract only the final numeric answer from the following solution:\n\n{solution}\n\nFINAL="
+#
+# [NEW CODE]:
+# System 1 (fast) prompt template - few-shot with explicit ANSWER= format
+system1_prompt: "Q: A baker made 9 cakes. He sold 4 cakes. How many cakes does he have left?\nANSWER=5\n\nQ: There are 15 apples and 8 oranges. How many fruits in total?\nANSWER=23\n\nQ: {question}\nANSWER="
 
-# System 2 (CoT) prompt template
-system2_prompt: "Solve the following math problem step by step, showing your reasoning:\n\n{question}\n\nLet's solve this step by step:"
+# System 2 (CoT) prompt template - few-shot, but don't force "Step 1:" continuation to avoid loops
+system2_prompt: "Q: A baker made 9 cakes. He sold 4 cakes. How many cakes does he have left?\nLet's think: The baker started with 9 cakes and sold 4, so 9 - 4 = 5 cakes left.\nANSWER=5\n\nQ: There are 15 apples and 8 oranges. How many fruits in total?\nLet's think: 15 apples + 8 oranges = 23 fruits total.\nANSWER=23\n\nQ: {question}\nLet's think:"
 
 # Answer extraction prompt (for System 2)
 extract_prompt: "Extract only the final numeric answer from the following solution:\n\n{solution}\n\nFINAL="
