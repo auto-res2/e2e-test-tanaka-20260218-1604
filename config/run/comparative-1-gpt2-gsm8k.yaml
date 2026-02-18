@@ -12,12 +12,35 @@ data:
   calibration_size: 60
   eval_size: 300
   
-# Model inference parameters
+# [VALIDATOR FIX - Attempt 1]
+# [PROBLEM]: High temperature causes repetitive, incoherent outputs from GPT-2
+# [CAUSE]: temperature=0.7 with top_p=0.95 and do_sample=True leads to repetitive loops in GPT-2
+# [FIX]: Use greedy decoding (temperature=0.0, do_sample=False) and shorter max_length for concise answers
+#
+# [OLD CODE]:
+# model_params:
+#   max_length: 512
+#   temperature: 0.7
+#   top_p: 0.95
+#   return_scores: false
+#
+# [NEW CODE]:
+# Model inference parameters - greedy decoding to avoid repetition
 model_params:
-  max_length: 512
-  temperature: 0.7
-  top_p: 0.95
+  max_length: 30
+  temperature: 0.0
+  top_p: 1.0
+  do_sample: false
   return_scores: false
   
-# System 1 (fast) prompt template
-system1_prompt: "Answer the following math problem directly with just the final numeric answer:\n\n{question}\n\nAnswer:"
+# [VALIDATOR FIX - Attempt 1]
+# [PROBLEM]: GPT-2 generates repetitive nonsense instead of numeric answers, leading to 0% accuracy
+# [CAUSE]: Prompt is too vague and GPT-2 base model is not trained for math reasoning without better formatting
+# [FIX]: Added few-shot examples to guide GPT-2 to produce numeric answers in the right format
+#
+# [OLD CODE]:
+# system1_prompt: "Answer the following math problem directly with just the final numeric answer:\n\n{question}\n\nAnswer:"
+#
+# [NEW CODE]:
+# System 1 (fast) prompt template - few-shot format for base GPT-2
+system1_prompt: "Solve these math problems:\n\nQ: Janet has 3 apples and buys 2 more. How many does she have?\nA: 5\n\nQ: A store has 20 items and sells 8. How many are left?\nA: 12\n\nQ: {question}\nA:"

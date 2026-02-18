@@ -67,17 +67,45 @@ class ModelInference:
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
         input_length = inputs.input_ids.shape[1]
         
+        # [VALIDATOR FIX - Attempt 1]
+        # [PROBLEM]: do_sample was always True, causing repetitive outputs even when config specifies greedy
+        # [CAUSE]: Code hardcoded do_sample=True instead of reading from model_params
+        # [FIX]: Read do_sample from model_params, default to True for backward compatibility
+        #
+        # [OLD CODE]:
+        # with torch.no_grad():
+        #     if return_scores:
+        #         outputs = self.model.generate(
+        #             **inputs,
+        #             max_new_tokens=self.model_params.get('max_length', 512),
+        #             temperature=self.model_params.get('temperature', 0.7),
+        #             top_p=self.model_params.get('top_p', 0.95),
+        #             do_sample=True,
+        #             return_dict_in_generate=True,
+        #             output_scores=True
+        #         )
+        #
+        # [NEW CODE]:
         with torch.no_grad():
+            do_sample = self.model_params.get('do_sample', True)
+            temp = self.model_params.get('temperature', 0.7)
+            
+            # Handle greedy decoding when temperature is 0 or do_sample is False
+            gen_kwargs = {
+                'max_new_tokens': self.model_params.get('max_length', 512),
+            }
+            
+            if do_sample and temp > 0:
+                gen_kwargs['do_sample'] = True
+                gen_kwargs['temperature'] = temp
+                gen_kwargs['top_p'] = self.model_params.get('top_p', 0.95)
+            else:
+                gen_kwargs['do_sample'] = False
+            
             if return_scores:
-                outputs = self.model.generate(
-                    **inputs,
-                    max_new_tokens=self.model_params.get('max_length', 512),
-                    temperature=self.model_params.get('temperature', 0.7),
-                    top_p=self.model_params.get('top_p', 0.95),
-                    do_sample=True,
-                    return_dict_in_generate=True,
-                    output_scores=True
-                )
+                gen_kwargs['return_dict_in_generate'] = True
+                gen_kwargs['output_scores'] = True
+                outputs = self.model.generate(**inputs, **gen_kwargs)
                 
                 # Extract generated text
                 generated_ids = outputs.sequences[0][input_length:]
@@ -97,13 +125,22 @@ class ModelInference:
                 
                 return generated_text, first_token_logits, all_token_logprobs
             else:
-                outputs = self.model.generate(
-                    **inputs,
-                    max_new_tokens=self.model_params.get('max_length', 512),
-                    temperature=self.model_params.get('temperature', 0.7),
-                    top_p=self.model_params.get('top_p', 0.95),
-                    do_sample=True
-                )
+                # [VALIDATOR FIX - Attempt 1]
+                # [PROBLEM]: Non-score generation path also had hardcoded do_sample=True
+                # [CAUSE]: Code didn't reuse the generation kwargs from above
+                # [FIX]: Use same gen_kwargs logic for consistency
+                #
+                # [OLD CODE]:
+                # outputs = self.model.generate(
+                #     **inputs,
+                #     max_new_tokens=self.model_params.get('max_length', 512),
+                #     temperature=self.model_params.get('temperature', 0.7),
+                #     top_p=self.model_params.get('top_p', 0.95),
+                #     do_sample=True
+                # )
+                #
+                # [NEW CODE]:
+                outputs = self.model.generate(**inputs, **gen_kwargs)
                 generated_ids = outputs[0][input_length:]
                 generated_text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
                 return generated_text, None, None
