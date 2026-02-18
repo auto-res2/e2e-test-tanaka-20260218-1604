@@ -136,10 +136,23 @@ class RC_CoT_Inference:
     
     def __init__(self, cfg):
         self.cfg = cfg
+        # [VALIDATOR FIX - Attempt 1]
+        # [PROBLEM]: ConfigAttributeError: Missing key model_params
+        # [CAUSE]: model_params is nested under cfg.run, not at root cfg level
+        # [FIX]: Changed cfg.get('model_params', {}) to cfg.run.get('model_params', {})
+        #
+        # [OLD CODE]:
+        # self.model_inference = ModelInference(
+        #     cfg.run.model,
+        #     cfg.inference.cache_dir,
+        #     cfg.get('model_params', {})
+        # )
+        #
+        # [NEW CODE]:
         self.model_inference = ModelInference(
             cfg.run.model,
             cfg.inference.cache_dir,
-            cfg.get('model_params', {})
+            cfg.run.get('model_params', {})
         )
         self.feature_extractor = ConfidenceFeatureExtractor()
         
@@ -148,21 +161,21 @@ class RC_CoT_Inference:
         
         if self.method == "rc-cot":
             self.monitor = CorrectnessMonitor(
-                model_type=cfg.method_params.get('monitor_type', 'logistic')
+                model_type=cfg.run.method_params.get('monitor_type', 'logistic')
             )
             self.threshold_selector = RiskControlledThresholdSelector(
-                alpha=cfg.method_params.alpha,
-                delta=cfg.method_params.delta
+                alpha=cfg.run.method_params.alpha,
+                delta=cfg.run.method_params.delta
             )
-            if cfg.method_params.shift_detection.enabled:
+            if cfg.run.method_params.shift_detection.enabled:
                 self.shift_detector = ShiftDetector(
-                    alpha_shift=cfg.method_params.shift_detection.alpha_shift
+                    alpha_shift=cfg.run.method_params.shift_detection.alpha_shift
                 )
             else:
                 self.shift_detector = None
         
         elif self.method == "entropy-gate":
-            self.entropy_threshold = cfg.method_params.entropy_threshold
+            self.entropy_threshold = cfg.run.method_params.entropy_threshold
     
     def run_monitor_training(self, monitor_data: List[Dict]) -> None:
         """Train correctness monitor on monitor_train split."""
@@ -177,8 +190,13 @@ class RC_CoT_Inference:
         labels = []
         
         for example in tqdm(monitor_data, desc="Extracting features"):
+            # [VALIDATOR FIX - Attempt 1]
+            # [PROBLEM]: ConfigAttributeError for system1_prompt, system2_prompt, extract_prompt
+            # [CAUSE]: These prompts are nested under cfg.run in the Hydra config structure
+            # [FIX]: Changed all cfg.system1_prompt, cfg.system2_prompt, cfg.extract_prompt to cfg.run.* (applied via replaceAll)
+            #
             # Generate System 1 answer
-            prompt = self.cfg.system1_prompt.format(question=example['question'])
+            prompt = self.cfg.run.system1_prompt.format(question=example['question'])
             generated, logits, logprobs = self.model_inference.generate_with_scores(
                 prompt, return_scores=True
             )
@@ -214,7 +232,7 @@ class RC_CoT_Inference:
         
         for example in tqdm(calib_data, desc="Generating calibration data"):
             # Generate System 1 answer
-            prompt = self.cfg.system1_prompt.format(question=example['question'])
+            prompt = self.cfg.run.system1_prompt.format(question=example['question'])
             generated, logits, logprobs = self.model_inference.generate_with_scores(
                 prompt, return_scores=True
             )
@@ -333,7 +351,7 @@ class RC_CoT_Inference:
         
         if self.method == "always-fast":
             # Always use System 1
-            prompt = self.cfg.system1_prompt.format(question=question)
+            prompt = self.cfg.run.system1_prompt.format(question=question)
             generated, _, _ = self.model_inference.generate_with_scores(prompt, return_scores=False)
             predicted_answer = extract_final_answer(generated)
             is_correct = check_answer_correctness(predicted_answer, ground_truth)
@@ -349,11 +367,11 @@ class RC_CoT_Inference:
         
         elif self.method == "always-cot":
             # Always use System 2
-            prompt = self.cfg.system2_prompt.format(question=question)
+            prompt = self.cfg.run.system2_prompt.format(question=question)
             cot_solution, _, _ = self.model_inference.generate_with_scores(prompt, return_scores=False)
             
             # Extract final answer
-            extract_prompt = self.cfg.extract_prompt.format(solution=cot_solution)
+            extract_prompt = self.cfg.run.extract_prompt.format(solution=cot_solution)
             answer_text, _, _ = self.model_inference.generate_with_scores(extract_prompt, return_scores=False)
             predicted_answer = extract_final_answer(answer_text)
             is_correct = check_answer_correctness(predicted_answer, ground_truth)
@@ -370,7 +388,7 @@ class RC_CoT_Inference:
         
         elif self.method == "entropy-gate":
             # Use entropy-based heuristic
-            prompt = self.cfg.system1_prompt.format(question=question)
+            prompt = self.cfg.run.system1_prompt.format(question=question)
             generated, logits, logprobs = self.model_inference.generate_with_scores(prompt, return_scores=True)
             
             # Compute entropy
@@ -396,10 +414,10 @@ class RC_CoT_Inference:
                 }
             else:
                 # High entropy: use System 2
-                prompt2 = self.cfg.system2_prompt.format(question=question)
+                prompt2 = self.cfg.run.system2_prompt.format(question=question)
                 cot_solution, _, _ = self.model_inference.generate_with_scores(prompt2, return_scores=False)
                 
-                extract_prompt = self.cfg.extract_prompt.format(solution=cot_solution)
+                extract_prompt = self.cfg.run.extract_prompt.format(solution=cot_solution)
                 answer_text, _, _ = self.model_inference.generate_with_scores(extract_prompt, return_scores=False)
                 predicted_answer = extract_final_answer(answer_text)
                 is_correct = check_answer_correctness(predicted_answer, ground_truth)
@@ -417,7 +435,7 @@ class RC_CoT_Inference:
         
         elif self.method == "rc-cot":
             # RC-CoT method with risk control and shift detection
-            prompt = self.cfg.system1_prompt.format(question=question)
+            prompt = self.cfg.run.system1_prompt.format(question=question)
             generated, logits, logprobs = self.model_inference.generate_with_scores(prompt, return_scores=True)
             
             # Extract features
@@ -457,10 +475,10 @@ class RC_CoT_Inference:
                 }
             else:
                 # Use System 2 (deliberation path)
-                prompt2 = self.cfg.system2_prompt.format(question=question)
+                prompt2 = self.cfg.run.system2_prompt.format(question=question)
                 cot_solution, _, _ = self.model_inference.generate_with_scores(prompt2, return_scores=False)
                 
-                extract_prompt = self.cfg.extract_prompt.format(solution=cot_solution)
+                extract_prompt = self.cfg.run.extract_prompt.format(solution=cot_solution)
                 answer_text, _, _ = self.model_inference.generate_with_scores(extract_prompt, return_scores=False)
                 predicted_answer = extract_final_answer(answer_text)
                 is_correct = check_answer_correctness(predicted_answer, ground_truth)
@@ -549,11 +567,26 @@ def main():
     else:
         print("WandB disabled")
     
+    # [VALIDATOR FIX - Attempt 1]
+    # [PROBLEM]: ConfigAttributeError: Missing key data
+    # [CAUSE]: Config structure has 'data' nested under 'run', but code was accessing it as cfg.data
+    # [FIX]: Changed cfg.data to cfg.run.data to match the actual Hydra config structure
+    #
+    # [OLD CODE]:
+    # monitor_data, calib_data, eval_data = load_gsm8k_splits(
+    #     monitor_train_size=cfg.data.monitor_train_size,
+    #     calibration_size=cfg.data.calibration_size,
+    #     eval_size=cfg.data.eval_size,
+    #     cache_dir=cfg.inference.cache_dir,
+    #     seed=cfg.inference.seed
+    # )
+    #
+    # [NEW CODE]:
     # Load data
     monitor_data, calib_data, eval_data = load_gsm8k_splits(
-        monitor_train_size=cfg.data.monitor_train_size,
-        calibration_size=cfg.data.calibration_size,
-        eval_size=cfg.data.eval_size,
+        monitor_train_size=cfg.run.data.monitor_train_size,
+        calibration_size=cfg.run.data.calibration_size,
+        eval_size=cfg.run.data.eval_size,
         cache_dir=cfg.inference.cache_dir,
         seed=cfg.inference.seed
     )
