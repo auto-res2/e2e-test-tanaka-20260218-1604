@@ -25,8 +25,17 @@ def main(cfg: DictConfig) -> None:
     # Apply mode-specific overrides
     if cfg.mode == "sanity_check":
         print("Applying sanity_check mode overrides...")
+        # [VALIDATOR FIX - Attempt 1]
+        # [PROBLEM]: ConfigAttributeError: Key 'data' is not in struct
+        # [CAUSE]: Incorrect config path - 'data' is nested under 'run', not at root level
+        # [FIX]: Changed cfg.data to cfg.run.data to access the correct config structure
+        #
+        # [OLD CODE]:
+        # cfg.data.eval_size = 10
+        #
+        # [NEW CODE]:
         # Reduce evaluation size for quick sanity check
-        cfg.data.eval_size = 10
+        cfg.run.data.eval_size = 10
         # Set WandB project to sanity namespace
         if not cfg.wandb.get("project_override", False):
             cfg.wandb.project = f"{cfg.wandb.project}-sanity"
@@ -34,8 +43,17 @@ def main(cfg: DictConfig) -> None:
         
     elif cfg.mode == "pilot":
         print("Applying pilot mode overrides...")
+        # [VALIDATOR FIX - Attempt 1]
+        # [PROBLEM]: ConfigAttributeError: Key 'data' is not in struct
+        # [CAUSE]: Incorrect config path - 'data' is nested under 'run', not at root level
+        # [FIX]: Changed cfg.data to cfg.run.data to access the correct config structure
+        #
+        # [OLD CODE]:
+        # cfg.data.eval_size = min(cfg.data.eval_size, 50)
+        #
+        # [NEW CODE]:
         # Reduce to smaller dataset for pilot runs
-        cfg.data.eval_size = min(cfg.data.eval_size, 50)
+        cfg.run.data.eval_size = min(cfg.run.data.eval_size, 50)
         cfg.wandb.mode = "online"
     
     # Create results directory
