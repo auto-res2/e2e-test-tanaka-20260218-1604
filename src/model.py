@@ -200,13 +200,32 @@ class RiskControlledThresholdSelector:
         predicted_probs = np.array(predicted_probs)
         actual_correct = np.array(actual_correct, dtype=int)
         
-        # Generate candidate thresholds
-        candidates = np.linspace(0.5, 0.99, 50)
+        # [VALIDATOR FIX - Attempt 8]
+        # [PROBLEM]: System 1 never used (0% usage) because threshold is 0.5 but all predictions are ~0.017
+        # [CAUSE]: Candidate thresholds start at 0.5, but with weak models like GPT-2, predicted probabilities
+        #          can be much lower (around 1-2%). The selector can't find any valid threshold in [0.5, 0.99]
+        #          and defaults to 0.5, which no example can exceed.
+        # [FIX]: Adjust candidate range to be data-adaptive: use [min_prob * 0.5, 0.99] to ensure we search
+        #        thresholds that are actually achievable. Keep a minimum of 0.01 for numerical stability.
+        #
+        # [OLD CODE]:
+        # # Generate candidate thresholds
+        # candidates = np.linspace(0.5, 0.99, 50)
+        # 
+        # best_threshold = 0.5
+        #
+        # [NEW CODE]:
+        # Generate candidate thresholds adapted to the data range
+        min_prob = max(0.01, np.min(predicted_probs) * 0.5)  # Start below min observed prob
+        max_prob = min(0.99, max(0.5, np.max(predicted_probs) * 1.2))  # End above max observed prob
+        candidates = np.linspace(min_prob, max_prob, 100)
         
-        best_threshold = 0.5
+        best_threshold = min_prob
         best_coverage = 0.0
         
         print(f"\nSelecting risk-controlled threshold (α={self.alpha}, δ={self.delta})...")
+        print(f"  Predicted prob range: [{np.min(predicted_probs):.4f}, {np.max(predicted_probs):.4f}]")
+        print(f"  Candidate threshold range: [{min_prob:.4f}, {max_prob:.4f}]")
         
         for p_star in candidates:
             # Accept examples where predicted prob > p_star
