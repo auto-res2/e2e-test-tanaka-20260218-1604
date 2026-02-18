@@ -72,6 +72,9 @@ class CorrectnessMonitor:
             model_type: "logistic" or "isotonic"
         """
         self.model_type = model_type
+        self.single_class_fallback = False
+        self.fallback_prob = 0.5
+        
         if model_type == "logistic":
             self.model = LogisticRegression(random_state=42)
         elif model_type == "isotonic":
@@ -96,15 +99,37 @@ class CorrectnessMonitor:
         print(f"Training {self.model_type} monitor on {len(labels)} examples...")
         print(f"  Positive rate: {np.mean(y):.2%}")
         
-        if self.model_type == "logistic":
-            self.model.fit(X, y)
-        elif self.model_type == "isotonic":
-            # Train base model
-            self.base_model.fit(X, y)
-            # Get probabilities for calibration
-            probs = self.base_model.predict_proba(X)[:, 1]
-            # Train isotonic calibrator
-            self.calibrator.fit(probs, y)
+        # [VALIDATOR FIX - Attempt 1]
+        # [PROBLEM]: sklearn LogisticRegression fails with "ValueError: This solver needs samples of at least 2 classes in the data, but the data contains only one class"
+        # [CAUSE]: When GPT-2 (small model) answers GSM8K directly without CoT, all answers are likely incorrect (or all correct), resulting in only one class (all 0s or all 1s)
+        # [FIX]: Check for single-class case and use a constant fallback predictor that always returns the observed class probability
+        #
+        # [OLD CODE]:
+        # if self.model_type == "logistic":
+        #     self.model.fit(X, y)
+        # elif self.model_type == "isotonic":
+        #     self.base_model.fit(X, y)
+        #     probs = self.base_model.predict_proba(X)[:, 1]
+        #     self.calibrator.fit(probs, y)
+        #
+        # [NEW CODE]:
+        unique_classes = np.unique(y)
+        if len(unique_classes) < 2:
+            # Single class case - use constant predictor
+            self.single_class_fallback = True
+            self.fallback_prob = float(np.mean(y))  # 0.0 or 1.0
+            print(f"WARNING: Only one class present (class={unique_classes[0]}). Using constant predictor with prob={self.fallback_prob:.3f}")
+        else:
+            self.single_class_fallback = False
+            if self.model_type == "logistic":
+                self.model.fit(X, y)
+            elif self.model_type == "isotonic":
+                # Train base model
+                self.base_model.fit(X, y)
+                # Get probabilities for calibration
+                probs = self.base_model.predict_proba(X)[:, 1]
+                # Train isotonic calibrator
+                self.calibrator.fit(probs, y)
     
     def predict_proba(self, features: Dict[str, float]) -> float:
         """
@@ -116,6 +141,10 @@ class CorrectnessMonitor:
         Returns:
             Probability of correctness (0 to 1)
         """
+        # Handle single-class fallback
+        if hasattr(self, 'single_class_fallback') and self.single_class_fallback:
+            return self.fallback_prob
+        
         X = self._features_to_array([features])
         
         if self.model_type == "logistic":
