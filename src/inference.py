@@ -452,14 +452,41 @@ class RC_CoT_Inference:
             }
         
         elif self.method == "always-cot":
+            # [VALIDATOR FIX - Attempt 5]
+            # [PROBLEM]: 0% accuracy because GPT-2 cannot follow the "FINAL=" extraction prompt
+            # [CAUSE]: Small models like GPT-2 don't understand meta-instructions like "extract only the final numeric answer".
+            #          The extract_prompt generates nonsense (e.g., "1.5 gallons", "DONE"), leading to wrong answers.
+            # [FIX]: Extract answer directly from the CoT solution instead of using a separate extraction prompt.
+            #        This is more robust for weak models that can't follow extraction instructions.
+            #
+            # [OLD CODE]:
+            # # Always use System 2
+            # prompt = self.cfg.run.system2_prompt.format(question=question)
+            # cot_solution, _, _ = self.model_inference.generate_with_scores(prompt, return_scores=False, allow_multiline=True)
+            # 
+            # # Extract final answer
+            # extract_prompt = self.cfg.run.extract_prompt.format(solution=cot_solution)
+            # answer_text, _, _ = self.model_inference.generate_with_scores(extract_prompt, return_scores=False, allow_multiline=False)
+            # predicted_answer = extract_final_answer(answer_text)
+            # is_correct = check_answer_correctness(predicted_answer, ground_truth)
+            # 
+            # return {
+            #     'question': question,
+            #     'ground_truth': ground_truth,
+            #     'predicted_answer': predicted_answer,
+            #     'is_correct': is_correct,
+            #     'system_used': 2,
+            #     'cot_solution': cot_solution,
+            #     'generated_text': answer_text
+            # }
+            #
+            # [NEW CODE]:
             # Always use System 2
             prompt = self.cfg.run.system2_prompt.format(question=question)
             cot_solution, _, _ = self.model_inference.generate_with_scores(prompt, return_scores=False, allow_multiline=True)
             
-            # Extract final answer
-            extract_prompt = self.cfg.run.extract_prompt.format(solution=cot_solution)
-            answer_text, _, _ = self.model_inference.generate_with_scores(extract_prompt, return_scores=False, allow_multiline=False)
-            predicted_answer = extract_final_answer(answer_text)
+            # Extract final answer directly from CoT solution (more robust for weak models)
+            predicted_answer = extract_final_answer(cot_solution)
             is_correct = check_answer_correctness(predicted_answer, ground_truth)
             
             return {
@@ -469,7 +496,7 @@ class RC_CoT_Inference:
                 'is_correct': is_correct,
                 'system_used': 2,
                 'cot_solution': cot_solution,
-                'generated_text': answer_text
+                'generated_text': cot_solution  # Use CoT solution as generated text
             }
         
         elif self.method == "entropy-gate":
@@ -499,13 +526,39 @@ class RC_CoT_Inference:
                     'generated_text': generated
                 }
             else:
+                # [VALIDATOR FIX - Attempt 5]
+                # [PROBLEM]: Same issue as always-cot - 0% accuracy due to failed answer extraction
+                # [CAUSE]: GPT-2 can't follow the extraction prompt
+                # [FIX]: Extract answer directly from CoT solution
+                #
+                # [OLD CODE]:
+                # # High entropy: use System 2
+                # prompt2 = self.cfg.run.system2_prompt.format(question=question)
+                # cot_solution, _, _ = self.model_inference.generate_with_scores(prompt2, return_scores=False, allow_multiline=True)
+                # 
+                # extract_prompt = self.cfg.run.extract_prompt.format(solution=cot_solution)
+                # answer_text, _, _ = self.model_inference.generate_with_scores(extract_prompt, return_scores=False, allow_multiline=False)
+                # predicted_answer = extract_final_answer(answer_text)
+                # is_correct = check_answer_correctness(predicted_answer, ground_truth)
+                # 
+                # return {
+                #     'question': question,
+                #     'ground_truth': ground_truth,
+                #     'predicted_answer': predicted_answer,
+                #     'is_correct': is_correct,
+                #     'system_used': 2,
+                #     'entropy': entropy,
+                #     'cot_solution': cot_solution,
+                #     'generated_text': answer_text
+                # }
+                #
+                # [NEW CODE]:
                 # High entropy: use System 2
                 prompt2 = self.cfg.run.system2_prompt.format(question=question)
                 cot_solution, _, _ = self.model_inference.generate_with_scores(prompt2, return_scores=False, allow_multiline=True)
                 
-                extract_prompt = self.cfg.run.extract_prompt.format(solution=cot_solution)
-                answer_text, _, _ = self.model_inference.generate_with_scores(extract_prompt, return_scores=False, allow_multiline=False)
-                predicted_answer = extract_final_answer(answer_text)
+                # Extract answer directly from CoT solution
+                predicted_answer = extract_final_answer(cot_solution)
                 is_correct = check_answer_correctness(predicted_answer, ground_truth)
                 
                 return {
@@ -516,7 +569,7 @@ class RC_CoT_Inference:
                     'system_used': 2,
                     'entropy': entropy,
                     'cot_solution': cot_solution,
-                    'generated_text': answer_text
+                    'generated_text': cot_solution
                 }
         
         elif self.method == "rc-cot":
@@ -560,13 +613,41 @@ class RC_CoT_Inference:
                     'generated_text': generated
                 }
             else:
+                # [VALIDATOR FIX - Attempt 5]
+                # [PROBLEM]: Same issue as always-cot - 0% accuracy due to failed answer extraction
+                # [CAUSE]: GPT-2 can't follow the extraction prompt
+                # [FIX]: Extract answer directly from CoT solution
+                #
+                # [OLD CODE]:
+                # # Use System 2 (deliberation path)
+                # prompt2 = self.cfg.run.system2_prompt.format(question=question)
+                # cot_solution, _, _ = self.model_inference.generate_with_scores(prompt2, return_scores=False, allow_multiline=True)
+                # 
+                # extract_prompt = self.cfg.run.extract_prompt.format(solution=cot_solution)
+                # answer_text, _, _ = self.model_inference.generate_with_scores(extract_prompt, return_scores=False, allow_multiline=False)
+                # predicted_answer = extract_final_answer(answer_text)
+                # is_correct = check_answer_correctness(predicted_answer, ground_truth)
+                # 
+                # return {
+                #     'question': question,
+                #     'ground_truth': ground_truth,
+                #     'predicted_answer': predicted_answer,
+                #     'is_correct': is_correct,
+                #     'system_used': 2,
+                #     'predicted_prob': predicted_prob if not shift_detected else None,
+                #     'shift_detected': shift_detected,
+                #     'features': features,
+                #     'cot_solution': cot_solution,
+                #     'generated_text': answer_text
+                # }
+                #
+                # [NEW CODE]:
                 # Use System 2 (deliberation path)
                 prompt2 = self.cfg.run.system2_prompt.format(question=question)
                 cot_solution, _, _ = self.model_inference.generate_with_scores(prompt2, return_scores=False, allow_multiline=True)
                 
-                extract_prompt = self.cfg.run.extract_prompt.format(solution=cot_solution)
-                answer_text, _, _ = self.model_inference.generate_with_scores(extract_prompt, return_scores=False, allow_multiline=False)
-                predicted_answer = extract_final_answer(answer_text)
+                # Extract answer directly from CoT solution
+                predicted_answer = extract_final_answer(cot_solution)
                 is_correct = check_answer_correctness(predicted_answer, ground_truth)
                 
                 return {
@@ -579,7 +660,7 @@ class RC_CoT_Inference:
                     'shift_detected': shift_detected,
                     'features': features,
                     'cot_solution': cot_solution,
-                    'generated_text': answer_text
+                    'generated_text': cot_solution
                 }
         
         else:
